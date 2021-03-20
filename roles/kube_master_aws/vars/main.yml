@@ -1,0 +1,4 @@
+---
+# vars file for kube_master
+
+pod_cidr_network: 10.244.0.0/16

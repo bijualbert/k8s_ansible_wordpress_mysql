@@ -1,0 +1,62 @@
+---
+# tasks file for kube_slave
+
+- name: "Installing Required Packages"
+  package:
+      name:
+      - "docker"
+      - "iproute-tc"
+      state: present
+
+- name: "Creating Yum Repo For Kubeadm, Kubelet, and Kubectl"
+  yum_repository:
+      name: kubernetes
+      description: "Kubernetes"
+      baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-\$basearch
+      gpgcheck: yes
+      gpgkey: https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+      exclude: kubelet kubeadm kubectl
+
+- name: "Installing Kubeadm, Kubelet, and Kubectl"
+  yum:
+      name: [ 'kubectl', 'kubeadm', 'kubelet' ]
+      state: present
+      disable_excludes: kubernetes
+
+- name: Ensure br_netfilter is enabled.
+  modprobe:
+    name: br_netfilter
+    state: present
+
+- name: update kernel settings
+  sysctl:
+    name: net.bridge.bridge-nf-call-iptables
+    value: 1
+    sysctl_set: yes
+    state: present
+    reload: yes
+
+- name: "Copy Daemon file to change the Docker's cgroup Driver"
+  copy:
+      src: daemon.json
+      dest: "/etc/docker/daemon.json"
+
+- name: "Starting Docker Service"
+  service:
+      name: "docker"
+      state: started
+      enabled: yes
+
+- name: "Starting Kubelet Service"
+  service:
+      name: "kubelet"
+      state: started
+
+- name: "Copying token to slave nodes"
+  copy: 
+      src: /tmp/token
+      dest: /tmp/token
+
+- name: "Joining the cluster"
+  shell: "bash /tmp/token"
+  ignore_errors: True
