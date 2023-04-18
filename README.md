@@ -13,11 +13,9 @@ In an environment, where we have lots of containers, managing them together beco
 Kubernetes is nothing but one of those container orchestration tools only that help us to manage our containers in the best possible ways.
 Apart from managing the containers, it provides some other benefits as well that we will get to know about further in this article.
 
-I have written one article on the use-cases of Kubernetes. To know more about Kubernetes and its use cases in the industry, you can have a look at it:
+One article on the use-cases of Kubernetes- To know more about Kubernetes and its use cases in the industry, you can have a look at it: https://www.linkedin.com/pulse/how-kubernetes-solving-challenges-faced-industries-shubham-mehta/?trackingId=sKor5eYil1ezcXdtHzcwOw%3D%3D
 
 How Kubernetes Is Solving The Challenges Faced In The Industries?
-Kubernetes has gained popularity for several use cases, given its unique features. It's a suitable platform to run…
-www.linkedin.com
 
 ANSIBLE
 
@@ -41,19 +39,19 @@ If I try to sum it up, our use case is to launch the entire Kubernetes cluster o
 
 Pre-requisites
 Do you need any kind of knowledge before going through this article? Yes, you do. You should have a basic knowledge of :
-
+```
 The AWS public cloud
 Ansible playbook and roles
 Kubernetes
-
+```
 So, let’s get started now.
 At first, we have to create Ansible roles that will help in configuring the Kubernetes cluster on the top of the AWS cloud.
 
 The very first step is to create an Ansible role. Here, we will be needing two different Ansible roles, one for configuring the Kubernetes master node and the other for configuring the Kubernetes slave node.
 To create an Ansible role, we have the above command:
-
+```
 ansible-galaxy init [role_name]
-
+```
 Inside every role, we generally use the above directories:
 
 Files: To store any static files, we use this folder. These static files then can be copied from the managed node to the target node.
@@ -63,6 +61,7 @@ Templates: We put all the dynamic files in this folder, the use case is to copy 
 Vars: Inside this directory, we have a ‘main.yml’ named file where we declare all those variables that will be further used anywhere in the tasks, handlers or even inside the files.
 After creating the first role i.e., for Kubernetes master node configuration, here is the ‘main.yml’ file’s content inside the tasks directory:
 k8s_master-tasks-main.yml 
+```
 ---
 # tasks file for kube_master
 
@@ -150,7 +149,7 @@ k8s_master-tasks-main.yml
 
 - name: "Storing Token"
   local_action: copy content={{ x.stdout }} dest=/tmp/token
-
+```
 
 At first, I have installed the required packages such as ‘docker’ and ‘iproute-tc’.
 Next, I have created a yum repo for ‘kubelet’, ‘kubectl’ and ‘kubeadm’ and installed them simultaneously.
@@ -161,14 +160,14 @@ In the next steps, I have initialized the cluster using the ‘kubeadm init’ c
 Installing the CNI (here, Flannel) plugin was the next step.
 And finally, I have stored the join token in my controller node. I will transfer it to the slave node to connect it to the master.
 In the above code, I have used a variable called ‘pod_cidr_network’. You might be wondering where this variable has been actually defined. So, this variable has been defined in the ‘main.yml’ file under the ‘vars’ directory:
-
+```
 # vars file for kube_master
 pod_cidr_network: 10.244.0.0/16
-
+```
 Here, I am using the default Pod CIDR that is being used by Flannel CNI. You can change this as well but in case, you changed the CIDR, you might have to change the value in the Flannel’s ConfigMap as well. Please take care of the same.
 Here, I have also used a ‘daemon.json’ named file. This is one of the configuration files for the Docker container, I have used it to change the default ‘cgroup’ driver of Docker.
 This file is there inside the ‘files’ directory with the following content:
-
+```
 {
   "exec-opts": ["native.cgroupdriver=systemd"],
   "log-driver": "json-file",
@@ -177,11 +176,13 @@ This file is there inside the ‘files’ directory with the following content:
   },
   "storage-driver": "overlay2"
 }
+```
 And hence, the Ansible Role for configuring a Kubernetes Master node has been successfully created.
 Let us quickly do the same for the slave node as well:
 
 Here is the ‘main.yml’ file under the ‘tasks’ directory:
 k8s_slave-tasks-main..yml
+```
 ---
 # tasks file for kube_slave
 
@@ -244,11 +245,11 @@ k8s_slave-tasks-main..yml
 - name: "Joining the cluster"
   shell: "bash /tmp/token"
   ignore_errors: True
-
+```
 Here also, from installing the required packages to starting the required services, all the steps are the same as that of the master node.
 The unique thing that I needed to do was to copy the join token from my controller node to the target node and run the command to join.
 Here also we are using the ‘daemon.json’ file inside the ‘files’ directory with the following content:
-
+```
 {
   "exec-opts": ["native.cgroupdriver=systemd"],
   "log-driver": "json-file",
@@ -257,6 +258,7 @@ Here also we are using the ‘daemon.json’ file inside the ‘files’ directo
   },
   "storage-driver": "overlay2"
 }
+```
 Note that in this role’s task, we are not using any kind of variable.
 
 And hence, the second role has been created as well.
@@ -276,6 +278,7 @@ Rest, all the configurations are basic.
 In Ansible, I am going to use the above-
 
 Configuration File of Ansible:
+```
 [defaults]
 inventory=hosts
 private_key_file=/root/arthkey.pem
@@ -300,15 +303,11 @@ The following playbook has been created to use these roles and configure the Mul
 - hosts: slave
   roles: 
   - kube_slave_aws
+```
 And that’s it. After executing the playbook, this was the result:
 
-
-
-
-
-
 Just Amazing!! The playbook ran successfully in the very first attempt.
-Let’s go inside the master node and check the same:
+Let’s go inside the master node and check the same on aws:
 
 And hence, the entire Kubernetes Multi-Node Cluster has been successfully configured on AWS cloud using Ansible in just once click.
 Now, let’s do something extra. Let us try to use this Kubernetes cluster.
@@ -318,7 +317,7 @@ I am going to use the above deployment files for MySQL and WordPress deployment:
 
 For MySQL:
 k8s-mysql-deployment.yml 
-
+```
 apiVersion: v1
 kind: Service
 metadata:
@@ -365,10 +364,10 @@ spec:
         ports:
         - containerPort: 3306
           name: mysql
-
+```
 For WordPress:
 k8s-wordpress-deployment.yml 
-
+```
 apiVersion: v1
 kind: Service
 metadata:
@@ -417,10 +416,10 @@ spec:
         ports:
         - containerPort: 80
           name: wordpress
-
+```
 I have created the above ‘kustomization’ file to launch the entire setup in one go:
 k8s-kustomization.yml :
-
+```
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 secretGenerator:
@@ -430,19 +429,13 @@ secretGenerator:
 resources:
   - mysql-deployment.yaml
   - wordpress-deployment.yaml
-
+```
 And finally, to launch the entire set up just in one click, all we need to do is to run the above command:
 
 kubectl create -k .
 If you have the ‘kustomization’ file in the same directory then use ‘dot’ (.) else you have to give the location of the file.
 
-The entire workspace that I have used here, I have uploaded everything in the above GitHub repo:
-
-shhubhamm/k8s_ansible_wordpress_mysql
-Contribute to shhubhamm/k8s_ansible_wordpress_mysql development by creating an account on GitHub.
-github.com
-
-Apart from the Workspace, I have also uploaded both the roles (that I created in the beginning) to the Ansible Galaxy.
+I have also uploaded both the roles (that I created in the beginning) to the Ansible Galaxy.
 Find them in the below links:
 
 Ansible Galaxy
@@ -450,7 +443,9 @@ Jump start your automation project with great content from the Ansible community
 galaxy.ansible.com
 
 Let’s see what do we get once we connect to the exported port of WordPress on the node’s IP:
+
 https://12.232.134.182:30789/wp-admin
+
 Great! We have configured the setup successfully.
 And finally, after setting up the account and logging in, we will get the above screen:
 
