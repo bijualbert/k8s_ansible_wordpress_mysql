@@ -24,11 +24,6 @@ ANSIBLE
 When you are in the IT industry, you may need to configure several servers again and again. And people do not like doing the same stuff again and again.
 And from here, the role of configuration management tools like Ansible comes into play.
 Ansible is an open-source tool that is acquired by RedHat and is used for configuration management. It is built on the top of python language.
-If you want to know why Ansible is so much popular in the market, I have one article where I have described the same in detail. Please go through the same:
-
-ANSIBLE- One Of the Greatest Boons In This Automation ERA🔥
-If you are from an IT background, you might have faced some situations where you had to perform certain tasks again and…
-shubham134.medium.com
 
 Problem Statement
 Now, we have the above problem statement for this task:
@@ -50,12 +45,15 @@ Do you need any kind of knowledge before going through this article? Yes, you do
 The AWS public cloud
 Ansible playbook and roles
 Kubernetes
+
 So, let’s get started now.
 At first, we have to create Ansible roles that will help in configuring the Kubernetes cluster on the top of the AWS cloud.
 
 The very first step is to create an Ansible role. Here, we will be needing two different Ansible roles, one for configuring the Kubernetes master node and the other for configuring the Kubernetes slave node.
 To create an Ansible role, we have the above command:
+
 ansible-galaxy init [role_name]
+
 Inside every role, we generally use the above directories:
 
 Files: To store any static files, we use this folder. These static files then can be copied from the managed node to the target node.
@@ -64,6 +62,94 @@ Tasks: This is the most crucial and most useful directory. We put all the requir
 Templates: We put all the dynamic files in this folder, the use case is to copy them to the target node only.
 Vars: Inside this directory, we have a ‘main.yml’ named file where we declare all those variables that will be further used anywhere in the tasks, handlers or even inside the files.
 After creating the first role i.e., for Kubernetes master node configuration, here is the ‘main.yml’ file’s content inside the tasks directory:
+k8s_master-tasks-main.yml 
+---
+# tasks file for kube_master
+
+- name: "Installing Required Packages"
+  package:
+      name:
+      - "docker"
+      - "iproute-tc"
+      state: present
+
+- name: "Creating Yum Repo For Kubeadm, Kubelet, and Kubectl"
+  yum_repository:
+      name: kubernetes
+      description: "Kubernetes"
+      baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-\$basearch
+      gpgcheck: yes
+      gpgkey: https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+      exclude: kubelet kubeadm kubectl
+
+- name: "Installing Kubeadm, Kubelet, and Kubectl"
+  yum:
+      name: [ 'kubectl', 'kubeadm', 'kubelet' ]
+      state: present
+      disable_excludes: kubernetes
+
+- name: Ensure br_netfilter is enabled.
+  modprobe:
+    name: br_netfilter
+    state: present
+
+- name: update kernel settings
+  sysctl:
+    name: net.bridge.bridge-nf-call-iptables
+    value: 1
+    sysctl_set: yes
+    state: present
+    reload: yes
+
+- name: "Copy Daemon file to change the Docker's cgroup Driver"
+  copy:
+      src: daemon.json
+      dest: "/etc/docker/daemon.json"
+
+- name: "Starting Docker Service"
+  service:
+      name: "docker"
+      state: started
+      enabled: yes
+
+- name: "Starting Kubelet Service"
+  service:
+      name: "kubelet"
+      state: started
+      enabled: yes
+
+- name: "Initializing the Kubernetes cluser on Master Node"
+  command: "kubeadm init --pod-network-cidr={{ pod_cidr_network }} --ignore-preflight-errors=NumCPU --ignore-preflight-errors=Mem"
+  ignore_errors: True
+
+- name: "Configuration Files Setup"
+  file:
+    path: "$HOME/.kube"
+    state: directory
+    
+- name: "Copying Configuration File"
+  copy:
+    src: /etc/kubernetes/admin.conf
+    dest: $HOME/.kube/config
+    remote_src: yes
+
+- name: Change kubeconfig file permission
+  file:
+    path: $HOME/.kube/config 
+    owner: "{{ ansible_effective_user_id }}"
+    group: "{{ ansible_effective_group_id }}"
+
+- name: "Downloading CNI Plugin"
+  command: "kubectl apply  -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml"
+  ignore_errors: True
+
+- name: "THE JOIN TOKEN"
+  command: "kubeadm token create --print-join-command"
+  register: x
+  ignore_errors: True
+
+- name: "Storing Token"
+  local_action: copy content={{ x.stdout }} dest=/tmp/token
 
 
 At first, I have installed the required packages such as ‘docker’ and ‘iproute-tc’.
@@ -78,6 +164,7 @@ In the above code, I have used a variable called ‘pod_cidr_network’. You mig
 
 # vars file for kube_master
 pod_cidr_network: 10.244.0.0/16
+
 Here, I am using the default Pod CIDR that is being used by Flannel CNI. You can change this as well but in case, you changed the CIDR, you might have to change the value in the Flannel’s ConfigMap as well. Please take care of the same.
 Here, I have also used a ‘daemon.json’ named file. This is one of the configuration files for the Docker container, I have used it to change the default ‘cgroup’ driver of Docker.
 This file is there inside the ‘files’ directory with the following content:
@@ -94,7 +181,69 @@ And hence, the Ansible Role for configuring a Kubernetes Master node has been su
 Let us quickly do the same for the slave node as well:
 
 Here is the ‘main.yml’ file under the ‘tasks’ directory:
+k8s_slave-tasks-main..yml
+---
+# tasks file for kube_slave
 
+- name: "Installing Required Packages"
+  package:
+      name:
+      - "docker"
+      - "iproute-tc"
+      state: present
+
+- name: "Creating Yum Repo For Kubeadm, Kubelet, and Kubectl"
+  yum_repository:
+      name: kubernetes
+      description: "Kubernetes"
+      baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-\$basearch
+      gpgcheck: yes
+      gpgkey: https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+      exclude: kubelet kubeadm kubectl
+
+- name: "Installing Kubeadm, Kubelet, and Kubectl"
+  yum:
+      name: [ 'kubectl', 'kubeadm', 'kubelet' ]
+      state: present
+      disable_excludes: kubernetes
+    
+- name: Ensure br_netfilter is enabled.
+  modprobe:
+    name: br_netfilter
+    state: present
+
+- name: update kernel settings
+  sysctl:
+    name: net.bridge.bridge-nf-call-iptables
+    value: 1
+    sysctl_set: yes
+    state: present
+    reload: yes
+
+- name: "Copy Daemon file to change the Docker's cgroup Driver"
+  copy:
+      src: daemon.json
+      dest: "/etc/docker/daemon.json"
+
+- name: "Starting Docker Service"
+  service:
+      name: "docker"
+      state: started
+      enabled: yes
+
+- name: "Starting Kubelet Service"
+  service:
+      name: "kubelet"
+      state: started
+
+- name: "Copying token to slave nodes"
+  copy: 
+      src: /tmp/token
+      dest: /tmp/token
+
+- name: "Joining the cluster"
+  shell: "bash /tmp/token"
+  ignore_errors: True
 
 Here also, from installing the required packages to starting the required services, all the steps are the same as that of the master node.
 The unique thing that I needed to do was to copy the join token from my controller node to the target node and run the command to join.
@@ -166,12 +315,121 @@ Now, let’s do something extra. Let us try to use this Kubernetes cluster.
 
 I will be launching a multi-tier application set up on top of this newly created Kubernetes Cluster. I am going to use one CMS (let’s say WordPress) and one Database (let’s say MySQL) and then I will be connecting them.
 I am going to use the above deployment files for MySQL and WordPress deployment:
+
 For MySQL:
+k8s-mysql-deployment.yml 
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-mysql
+  labels:
+    app: wordpress
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: wordpress
+    tier: mysql
+  clusterIP: None
+---
+
+apiVersion: apps/v1 # for versions before 1.9.0 use apps/v1beta2
+kind: Deployment
+metadata:
+  name: wordpress-mysql
+  labels:
+    app: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+      tier: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+        tier: mysql
+    spec:
+      containers:
+      - image: mysql:5.6
+        name: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 3306
+          name: mysql
 
 For WordPress:
+k8s-wordpress-deployment.yml 
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress
+  labels:
+    app: wordpress
+spec:
+  ports:
+    - port: 80
+  selector:
+    app: wordpress
+    tier: frontend
+  type: LoadBalancer
+---
+
+apiVersion: apps/v1 # for versions before 1.9.0 use apps/v1beta2
+kind: Deployment
+metadata:
+  name: wordpress
+  labels:
+    app: wordpress
+spec:
+  selector:
+    matchLabels:
+      app: wordpress
+      tier: frontend
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+        tier: frontend
+    spec:
+      containers:
+      - image: wordpress:4.8-apache
+        name: wordpress
+        env:
+        - name: WORDPRESS_DB_HOST
+          value: wordpress-mysql
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-pass
+              key: password
+        ports:
+        - containerPort: 80
+          name: wordpress
 
 I have created the above ‘kustomization’ file to launch the entire setup in one go:
+k8s-kustomization.yml :
 
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+secretGenerator:
+- name: mysql-pass
+  literals:
+  - password=redhat
+resources:
+  - mysql-deployment.yaml
+  - wordpress-deployment.yaml
 
 And finally, to launch the entire set up just in one click, all we need to do is to run the above command:
 
@@ -184,19 +442,15 @@ shhubhamm/k8s_ansible_wordpress_mysql
 Contribute to shhubhamm/k8s_ansible_wordpress_mysql development by creating an account on GitHub.
 github.com
 
-Apart from the Workspace, I have also uploaded both the roles (that I created in the beginning) to the Ansible Galaxy. F
+Apart from the Workspace, I have also uploaded both the roles (that I created in the beginning) to the Ansible Galaxy.
 Find them in the below links:
 
 Ansible Galaxy
 Jump start your automation project with great content from the Ansible community
 galaxy.ansible.com
 
-Ansible Galaxy
-Jump start your automation project with great content from the Ansible community
-galaxy.ansible.com
-
 Let’s see what do we get once we connect to the exported port of WordPress on the node’s IP:
-
+https://12.232.134.182:30789/wp-admin
 Great! We have configured the setup successfully.
 And finally, after setting up the account and logging in, we will get the above screen:
 
