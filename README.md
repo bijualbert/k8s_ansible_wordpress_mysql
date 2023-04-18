@@ -271,8 +271,10 @@ Here, I have launched the above three instances on the AWS cloud, one will be th
 I have used the above configuration for the instances:
 
 AMI: Amazon Linux
+```
 Instance Type: t2.micro (for free tier). You can also go for t2.medium or t2.large, the cluster will run smoothly then. t2.micro provides 1 GB RAM and 1 VCPU in the free tier that might cause some issue while cluster configuration.
 Security Group: Allow All (However, you can allow the specific ports used by Kubernetes components).
+```
 Rest, all the configurations are basic.
 
 In Ansible, I am going to use the above-
