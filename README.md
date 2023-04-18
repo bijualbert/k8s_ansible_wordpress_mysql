@@ -431,8 +431,9 @@ resources:
   - wordpress-deployment.yaml
 ```
 And finally, to launch the entire set up just in one click, all we need to do is to run the above command:
-
+```
 kubectl create -k .
+```
 If you have the ‘kustomization’ file in the same directory then use ‘dot’ (.) else you have to give the location of the file.
 
 I have also uploaded both the roles (that I created in the beginning) to the Ansible Galaxy.
